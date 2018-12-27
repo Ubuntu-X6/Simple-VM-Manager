@@ -48,6 +48,7 @@ if [ "$1" = "-clean" ] ; then
 fi
 if [ "$1" = "--guide" ] ; then
    cat <<EOF
+To use svm, you need to use 'su'  to gain root permission.Please note that sudo may let this program cash.
 Create a VM
       svm -c [your-vm-name] 
 GestOS Installion
