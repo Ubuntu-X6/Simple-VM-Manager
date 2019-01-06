@@ -1,5 +1,19 @@
 #!/bin/bash 
-if [ "$1" = "-g" ] ; then
+if [ "$1" = "--mount" ] ; then
+   if [ -e /VM/"$2"/rootfs.img ] ;then
+   mount /VM/"$2"/rootfs.img /VM/"$2"/rootfs
+   fi
+   if [ -e /VM/"$2"/rootfs.sq ] ;then
+   mount /VM/"$2"/rootfs.sq /VM/"$2"/overlay/lower
+   fi
+   if [ -e /VM/"$2"/overlay ] ;then
+      if [ -e /VM/"$2"/overlay/lower ] ;then
+      lower=/VM/"$2"/overlay/lower
+      else
+      lower=/VM/"$2"/../rootfs
+      fi
+   mount -t overlay -o lowerdir=$lower,upperdir=/VM/"$2"/overlay/upper,workdir=/VM/"$2"/overlay/work svm /VM/"$2"/rootfs
+   fi
    mount --rbind /dev /VM/"$2"/rootfs/dev
    mount --make-rslave /VM/"$2"/rootfs/dev
    mount -t proc /proc /VM/"$2"/rootfs/proc
@@ -8,51 +22,66 @@ if [ "$1" = "-g" ] ; then
    mount --rbind /tmp /VM/"$2"/rootfs/tmp
    mount --rbind /run /VM/"$2"/rootfs/run
    mount --make-rslave /VM/"$2"/rootfs/run
+   exit
+fi 
+if [ "$1" = "-s" ] ; then
+   svm --mount "$2"
+   chroot  /VM/"$2"/rootfs
+   exit
+fi
+if [ "$1" = "-g" ] ; then
+   svm --mount "$2"
    Xephyr  "$3" -fullscreen &
    export DISPLAY="$3"
    echo '#!/bin/sh' >/VM/"$2"/rootfs/ginit
    echo 'unset DBUS_SESSION_BUS_ADDRESS' >> /VM/"$2"/rootfs/ginit
    echo 'unset SESSION_MANAGER' >> /VM/"$2"/rootfs/ginit
    echo export DISPLAY="$3" >> /VM/"$2"/rootfs/ginit
-   chmod +x /VM/"$2"/rootfs/etc/X11/xinit/xinitrc
    echo 'exec /etc/X11/xinit/xinitrc' >> /VM/"$2"/rootfs/ginit
+   echo 'bash' >> /VM/"$2"/rootfs/ginit
    chmod +x /VM/"$2"/rootfs/ginit
    chroot /VM/"$2"/rootfs /ginit &
    chroot  /VM/"$2"/rootfs
-   exit
-fi
-if [ "$1" = "-s" ] ; then
-   mount --rbind /dev /VM/"$2"/rootfs/dev
-   mount --make-rslave /VM/"$2"/rootfs/dev
-   mount -t proc /proc /VM/"$2"/rootfs/proc
-   mount --rbind /sys /VM/"$2"/rootfs/sys
-   mount --make-rslave /VM/"$2"/rootfs/sys
-   mount --rbind /tmp /VM/"$2"/rootfs/tmp
-   mount --rbind /run /VM/"$2"/rootfs/run
-   mount --make-rslave /VM/"$2"/rootfs/run  
-   chroot /VM/"$2"/rootfs || chroot /VM/"$2"/rootfs /bin/sh
    exit
 fi
 if [ "$1" = "-l" ] ; then
    ls /VM
    exit
 fi
+if [ "$1" = "-n" ] ; then
+   mkdir /VM/"$2"/"$3" /VM/"$2"/"$3"/rootfs /VM/"$2"/"$3"/overlay /VM/"$2"/"$3"/overlay/upper /VM/"$2"/"$3"/overlay/work
+   exit
+fi
 if [ "$1" = "-c" ] ; then
    mkdir /VM/"$2"
    mkdir /VM/"$2"/rootfs
-   exit
+   if [ "$3" = "img" ] ; then
+      ln -s "$4" /VM/"$2"/rootfs.img
+      exit
+   fi
+   if [ "$3" = "unsquash" ] ; then
+      rm -r /VM/"$2"/rootfs
+      cd /VM/"$2" 
+      unsquashfs  "$4"
+      mv squashfs-root rootfs
+      exit
+   fi
+   if [ "$3" = "rawsquash" ] ; then
+      cp "$4" /VM/"$2"/rootfs.sq
+      mkdir /VM/"$2"/overlay /VM/"$2"/overlay/upper /VM/"$2"/overlay/work /VM/"$2"/overlay/lower
+      exit
+   fi
+exit
 fi
-if [ "$1" = "-clean" ] ; then
+if [ "$1" = "--clean" ] ; then
    rm /VM/"$2"/boot/* /VM/"$2"/lib/modules/*
    exit
 fi
 if [ "$1" = "--guide" ] ; then
    cat <<EOF
 To use svm, you need to use 'su'  to gain root permission.Please note that sudo may let this program cash.
-Create a VM
-      svm -c [your-vm-name] 
 GestOS Installion
-      Please note that svm does not support a normal installion of Guest OS.If you want to install a system from  LiveCD, just unpack it to /VM/your-vm-name/rootfs.You can also use kvm to install the system to a img file , then mount it on /VM/your-vm-name/rootfs or copy the guest os there.
+      If you want to install a system from  LiveCD, mount it and find the livesystem's image file(usually a img file or a squafhfs file). run 'svm -c VMname unsquash image-path' or 'svm -c VMname rawsquash image-path' to install it.Note that if you use rawsquash option the installation will be fast and the installed system will require less disk space than a unsquashfs installation.But it will also slow down your VM. You can also use kvm install the system to a img file , then run 'svm -c VMname img your-img-path' to sign it to a VM.
 Start a VM 
      svm -s [your-vm-name] 
 Start a VM with GUI
@@ -60,12 +89,16 @@ Start a VM with GUI
     example:
     svm -g Debian :4
     Please make sure that display number is not occupied.
-    You may neeed to edit the guests os's /etc/X11/xinit/xinitrc manually if the Desktop Environment failed to start.
-Remove a VM
+    You may also neeed to edit the guests os's /etc/X11/xinit/xinitrc manually if the Desktop Environment failed to start.
+Create a snapshot
+    svm -n VMname Snapshortname
+    use 'svm -s VMname/Snapshortname' to use it.
+Remove a VM or snapshot
+    Make sure your VM is not mounted,and then
     rm /VM/your-vm-name
 Remove Kernels in guest OS
-     kernel in guest OS is not needed because all guest OS share the host's kernel 
-     Use 'svm --clean [your-vm-name] to clean them'
+     kernel in guest OS is not needed because all guest OS share the host's kernel, you can remove them by
+     'svm --clean [your-vm-name] 
 EOF
 exit
 fi
@@ -74,8 +107,9 @@ Useage: svm [OPTION] [VMname]
      
        -c Create a VM
        -s Start a VM
-       -g Start a VM with GUI
+       -g Start GUI of a VM
        -l List all VMs
-       
-use "--guide" option to read the user guide
+       -n Create snapshot for a VM 
+Try "svm --guide" option for more information
 EOF
+exit
