@@ -1,18 +1,21 @@
 #!/bin/bash 
+mkdir /VM
+clear
 if [ "$1" = "--mount" ] ; then
+   if [ -e /VM/"$2"/rootfs/proc/1 ] ;then
+   exit
+   fi
    if [ -e /VM/"$2"/rootfs.img ] ;then
    mount /VM/"$2"/rootfs.img /VM/"$2"/rootfs
    fi
    if [ -e /VM/"$2"/rootfs.sq ] ;then
    mount /VM/"$2"/rootfs.sq /VM/"$2"/overlay/lower
+   mount -t overlay -o lowerdir=/VM/"$2"/overlay/lower,upperdir=/VM/"$2"/overlay/upper,workdir=/VM/"$2"/overlay/work svm /VM/"$2"/rootfs
    fi
-   if [ -e /VM/"$2"/overlay ] ;then
-      if [ -e /VM/"$2"/overlay/lower ] ;then
-      lower=/VM/"$2"/overlay/lower
-      else
-      lower=/VM/"$2"/../rootfs
-      fi
-   mount -t overlay -o lowerdir=$lower,upperdir=/VM/"$2"/overlay/upper,workdir=/VM/"$2"/overlay/work svm /VM/"$2"/rootfs
+   ls /VM/"$2"/rootfs/bin || e=1
+   if [ "$e" = 1 ] ;then
+   svm --mount "$2/.."
+   mount -t overlay -o lowerdir=/VM/"$2"/../rootfs,upperdir=/VM/"$2"/overlay/upper,workdir=/VM/"$2"/overlay/work svm /VM/"$2"/rootfs
    fi
    mount --rbind /dev /VM/"$2"/rootfs/dev
    mount --make-rslave /VM/"$2"/rootfs/dev
@@ -22,10 +25,14 @@ if [ "$1" = "--mount" ] ; then
    mount --rbind /tmp /VM/"$2"/rootfs/tmp
    mount --rbind /run /VM/"$2"/rootfs/run
    mount --make-rslave /VM/"$2"/rootfs/run
+   rm -r /VM/"$2"/rootfs/root/.local/share/Trash/*
+   rm -r /VM/Trash*  /root/.local/share/Trash/*
+   svm --clean
    exit
 fi 
 if [ "$1" = "-s" ] ; then
    svm --mount "$2"
+   clear
    chroot  /VM/"$2"/rootfs
    exit
 fi
@@ -41,6 +48,7 @@ if [ "$1" = "-g" ] ; then
    echo 'bash' >> /VM/"$2"/rootfs/ginit
    chmod +x /VM/"$2"/rootfs/ginit
    chroot /VM/"$2"/rootfs /ginit &
+   clear
    chroot  /VM/"$2"/rootfs
    exit
 fi
@@ -74,7 +82,7 @@ if [ "$1" = "-c" ] ; then
 exit
 fi
 if [ "$1" = "--clean" ] ; then
-   rm /VM/"$2"/boot/* /VM/"$2"/lib/modules/*
+   rm /VM/*/boot/* /VM/*/lib/modules/*
    exit
 fi
 if [ "$1" = "--guide" ] ; then
@@ -85,7 +93,7 @@ GestOS Installion
 Start a VM 
      svm -s [your-vm-name] 
 Start a VM with GUI
-    if you want start a VM with GUI,Xephyr is needed. Use 'svm [-g your-vm-name]  [Display Number]' to start .
+    if you want start a VM with GUI,Xephyr is needed. Use 'svm [-g your-vm-name]  [Display Name]' to start .
     example:
     svm -g Debian :4
     Please make sure that display number is not occupied.
@@ -95,10 +103,7 @@ Create a snapshot
     use 'svm -s VMname/Snapshortname' to use it.
 Remove a VM or snapshot
     Make sure your VM is not mounted,and then
-    rm /VM/your-vm-name
-Remove Kernels in guest OS
-     kernel in guest OS is not needed because all guest OS share the host's kernel, you can remove them by
-     'svm --clean [your-vm-name] 
+    rm /VM/your-vm-name 
 EOF
 exit
 fi
